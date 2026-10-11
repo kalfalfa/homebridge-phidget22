@@ -1,0 +1,117 @@
+{
+  "pluginAlias": "Phidget22",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "Expose Phidget22 channels and dictionary keys as HomeKit accessories. Supports local USB and one or more Phidget Network Server connections.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Platform Name",
+        "type": "string",
+        "default": "Phidget22",
+        "required": true
+      },
+      "connections": {
+        "title": "Phidget Connections",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "title": "Name", "type": "string", "required": true, "default": "Local" },
+            "type": { "title": "Type", "type": "string", "oneOf": [
+              { "title": "Local (USB)", "enum": ["local"] },
+              { "title": "Network Server", "enum": ["network"] }
+            ], "default": "local", "required": true },
+            "hostname": { "title": "Hostname", "type": "string", "condition": { "functionBody": "return model.connections && model.connections[arrayIndices[0]] && model.connections[arrayIndices[0]].type === 'network';" } },
+            "port": { "title": "Port", "type": "integer", "default": 5661, "condition": { "functionBody": "return model.connections && model.connections[arrayIndices[0]] && model.connections[arrayIndices[0]].type === 'network';" } },
+            "password": { "title": "Password", "type": "string", "condition": { "functionBody": "return model.connections && model.connections[arrayIndices[0]] && model.connections[arrayIndices[0]].type === 'network';" } }
+          }
+        }
+      },
+      "accessories": {
+        "title": "Accessories",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "title": "Name", "type": "string", "required": true },
+            "type": {
+              "title": "Source",
+              "type": "string",
+              "oneOf": [
+                { "title": "Phidget Channel", "enum": ["channel"] },
+                { "title": "Dictionary Key", "enum": ["dictionary"] }
+              ],
+              "default": "channel",
+              "required": true
+            },
+            "connection": { "title": "Connection", "type": "string", "default": "Local" },
+            "service": {
+              "title": "HomeKit Service",
+              "type": "string",
+              "oneOf": [
+                { "title": "Temperature Sensor", "enum": ["TemperatureSensor"] },
+                { "title": "Humidity Sensor", "enum": ["HumiditySensor"] },
+                { "title": "Light Sensor", "enum": ["LightSensor"] },
+                { "title": "Contact Sensor", "enum": ["ContactSensor"] },
+                { "title": "Motion Sensor", "enum": ["MotionSensor"] },
+                { "title": "Leak Sensor", "enum": ["LeakSensor"] },
+                { "title": "Smoke Sensor", "enum": ["SmokeSensor"] },
+                { "title": "Occupancy Sensor", "enum": ["OccupancySensor"] },
+                { "title": "Carbon Monoxide Sensor", "enum": ["CarbonMonoxideSensor"] },
+                { "title": "Carbon Dioxide Sensor", "enum": ["CarbonDioxideSensor"] },
+                { "title": "Air Quality Sensor", "enum": ["AirQualitySensor"] },
+                { "title": "Switch", "enum": ["Switch"] },
+                { "title": "Lightbulb", "enum": ["Lightbulb"] },
+                { "title": "Outlet", "enum": ["Outlet"] },
+                { "title": "Fan", "enum": ["Fan"] }
+              ],
+              "required": true
+            },
+            "channelClass": {
+              "title": "Phidget Channel Class",
+              "type": "string",
+              "oneOf": [
+                { "title": "VoltageInput", "enum": ["VoltageInput"] },
+                { "title": "VoltageRatioInput", "enum": ["VoltageRatioInput"] },
+                { "title": "TemperatureSensor", "enum": ["TemperatureSensor"] },
+                { "title": "HumiditySensor", "enum": ["HumiditySensor"] },
+                { "title": "LightSensor", "enum": ["LightSensor"] },
+                { "title": "PressureSensor", "enum": ["PressureSensor"] },
+                { "title": "DistanceSensor", "enum": ["DistanceSensor"] },
+                { "title": "CurrentInput", "enum": ["CurrentInput"] },
+                { "title": "FrequencyCounter", "enum": ["FrequencyCounter"] },
+                { "title": "DigitalInput", "enum": ["DigitalInput"] },
+                { "title": "DigitalOutput", "enum": ["DigitalOutput"] },
+                { "title": "CapacitiveTouch", "enum": ["CapacitiveTouch"] }
+              ],
+              "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" }
+            },
+            "serialNumber": { "title": "Device Serial Number", "type": "integer", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" } },
+            "hubPort": { "title": "Hub Port", "type": "integer", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" } },
+            "channel": { "title": "Channel", "type": "integer", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" } },
+            "isHubPortDevice": { "title": "VINT Hub Port Device", "type": "boolean", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" } },
+            "sensorType": {
+              "title": "Sensor Type (enum name, e.g. PN_1142)",
+              "type": "string",
+              "description": "For VoltageInput / VoltageRatioInput — pass the Phidget sensor-type enum name (e.g. PN_1125_TEMPERATURE). Leave blank for raw voltage / ratio.",
+              "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && ['VoltageInput','VoltageRatioInput'].includes(model.accessories[arrayIndices[0]].channelClass);" }
+            },
+            "dataInterval": { "title": "Data Interval (ms)", "type": "integer" },
+            "openTimeout": { "title": "Open Timeout (ms)", "type": "integer", "default": 5000 },
+            "invert": { "title": "Invert Digital Input", "type": "boolean", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].channelClass === 'DigitalInput';" } },
+
+            "dictionaryLabel": { "title": "Dictionary Label", "type": "string", "default": "sensors", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "key": { "title": "Dictionary Key", "type": "string", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "parse": { "title": "Parse As", "type": "string", "oneOf": [ { "title": "Number", "enum": ["number"] }, { "title": "Boolean (1/0 or true/false)", "enum": ["bool"] } ], "default": "number", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "scale": { "title": "Scale", "type": "number", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "offset": { "title": "Offset", "type": "number", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "writable": { "title": "Writable (set key on command)", "type": "boolean", "default": false, "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },
+            "writeFormat": { "title": "Write Format", "type": "string", "oneOf": [ { "title": "Number", "enum": ["number"] }, { "title": "Boolean", "enum": ["bool"] } ], "default": "number", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].writable === true;" } }
+          }
+        }
+      }
+    }
+  }
+}

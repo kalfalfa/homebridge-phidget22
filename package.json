@@ -1,0 +1,33 @@
+{
+  "name": "homebridge-phidget22",
+  "displayName": "Phidget22",
+  "version": "0.1.0",
+  "description": "Homebridge dynamic platform plugin that exposes Phidget22 channels and dictionary keys as HomeKit accessories. Supports local USB and Phidget Network Server connections.",
+  "author": "Patrick McNeil <kalfalfa@gmail.com>",
+  "license": "ISC",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "homebridge-plugin",
+    "phidget",
+    "phidget22",
+    "sensor"
+  ],
+  "engines": {
+    "node": ">=18",
+    "homebridge": ">=1.6.0 || ^2.0.0-beta.0 || ^2.0.0"
+  },
+  "dependencies": {
+    "phidget22": "^3.26.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "homebridge": "^2.0.0",
+    "typescript": "^5.4.0"
+  }
+}
