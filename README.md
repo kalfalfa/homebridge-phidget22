@@ -77,11 +77,21 @@ If you omit `connections`, a single `Local` USB connection is assumed.
 
 ### Dictionary accessories
 
+Phidget Dictionaries live on the Phidget Network Server, not on USB — so a
+dictionary accessory must reference a `network`-type connection. The server
+is usually running on the same host (`localhost:5661`), in which case:
+
+```json
+"connections": [
+  { "name": "LocalServer", "type": "network", "hostname": "localhost" }
+]
+```
+
 ```json
 {
   "type": "dictionary",
   "name": "Cellar Fermentation",
-  "connection": "Local",
+  "connection": "LocalServer",
   "dictionaryLabel": "sensors",
   "key": "CellarFermentationTemperature",
   "service": "TemperatureSensor"
@@ -100,9 +110,12 @@ If you omit `connections`, a single `Local` USB connection is assumed.
 ```json
 {
   "platform": "Phidget22",
-  "connections": [{ "name": "Local", "type": "local" }],
+  "connections": [
+    { "name": "Local", "type": "local" },
+    { "name": "LocalServer", "type": "network", "hostname": "localhost" }
+  ],
   "accessories": [
-    { "type": "dictionary", "name": "Downstairs Temp", "key": "DownstairsTemperature", "service": "TemperatureSensor" },
+    { "type": "dictionary", "name": "Downstairs Temp", "connection": "LocalServer", "key": "DownstairsTemperature", "service": "TemperatureSensor" },
     { "type": "dictionary", "name": "Downstairs Humidity", "key": "DownstairsHumidity", "service": "HumiditySensor" },
     { "type": "dictionary", "name": "Outside Temp", "key": "OutsideFilterTemperature", "service": "TemperatureSensor" },
     { "type": "dictionary", "name": "Outside Humidity", "key": "OutsideFilterHumidity", "service": "HumiditySensor" },
