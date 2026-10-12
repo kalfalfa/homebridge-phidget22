@@ -32,16 +32,10 @@ export class DictionarySubscription {
     this.dict.onAttach = () => {
       this.attached = true;
       this.log.info(`[dictionary:${this.label}] attached`);
-      void this.rescan();
-      // Resolve any pending gets for already-subscribed keys that were
-      // registered before the dictionary attached.
-      for (const key of this.listeners.keys()) {
-        if (this.cache.has(key)) continue;
-        this.dict.get(key).then((v) => {
-          if (v !== null) this.deliver(key, v);
-        }).catch(() => {});
-      }
       this.fireAttach(true);
+      // rescan() delivers values for every scanned key and null for any
+      // listener key that isn't in the dictionary.
+      void this.rescan();
     };
     this.dict.onDetach = () => {
       this.attached = false;
@@ -77,12 +71,14 @@ export class DictionarySubscription {
   }
 
   private async rescan(): Promise<void> {
+    const seen = new Set<string>();
     try {
       let cursor = '';
       for (;;) {
         const batch = await this.dict.scan(cursor || undefined);
         if (!batch || batch.length === 0) break;
         for (const key of batch) {
+          seen.add(key);
           const v = await this.dict.get(key);
           if (v !== null) this.deliver(key, v);
         }
@@ -90,6 +86,12 @@ export class DictionarySubscription {
       }
     } catch (err) {
       this.log.warn(`[dictionary:${this.label}] scan failed: ${(err as Error).message}`);
+      return;
+    }
+    // Any listener key that wasn't in the scan is missing from the dictionary;
+    // deliver null so subscribers can mark themselves unresponsive.
+    for (const key of this.listeners.keys()) {
+      if (!seen.has(key)) this.deliver(key, null);
     }
   }
 
@@ -102,11 +104,9 @@ export class DictionarySubscription {
       cb(cached);
     } else if (this.attached) {
       this.dict.get(key).then((v) => {
-        if (v !== null) {
-          this.cache.set(key, v);
-          cb(v);
-        }
-      }).catch(() => {});
+        if (v !== null) this.cache.set(key, v);
+        cb(v);
+      }).catch(() => cb(null));
     }
     return () => {
       const list = this.listeners.get(key);
@@ -144,6 +144,8 @@ export class PhidgetDictionaryAccessory {
   private readonly log: Logger;
   private currentValue: number = 0;
   private subscription?: DictionarySubscription;
+  private keyAvailable = false;
+  private warnedBadValue?: string;
 
   constructor(
     private readonly platform: Phidget22Platform,
@@ -185,9 +187,10 @@ export class PhidgetDictionaryAccessory {
     const char = this.service.getCharacteristic(CharClass as never);
     const isWritable = !!(t.fromHK && this.cfg.writable);
     char.onGet(() => {
-      // Sensor-style dictionary accessory with no attached server → unresponsive.
+      // Sensor-style accessories report unresponsive whenever the dictionary
+      // is detached or the specific key is missing / unparseable.
       // Writable accessories keep their last-known state.
-      if (!this.subscription?.isAttached() && !isWritable) {
+      if (!isWritable && (!this.subscription?.isAttached() || !this.keyAvailable)) {
         throw new this.platform.api.hap.HapStatusError(
           this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
         );
@@ -229,9 +232,36 @@ export class PhidgetDictionaryAccessory {
       (this.platform.Characteristic as unknown as Record<string, { UUID: string }>)[t.characteristic];
     const isWritable = !!(t.fromHK && this.cfg.writable);
 
+    const markUnresponsive = () => {
+      this.keyAvailable = false;
+      if (!CharClass || !this.service || isWritable) return;
+      this.service.getCharacteristic(CharClass as never).updateValue(
+        new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+        ),
+      );
+    };
+
     this.subscription.subscribe(this.cfg.key, (raw) => {
+      if (raw === null) {
+        if (this.keyAvailable || this.warnedBadValue !== 'missing') {
+          this.log.info(`[${this.cfg.name}] key "${this.cfg.key}" not present in dictionary`);
+          this.warnedBadValue = 'missing';
+        }
+        markUnresponsive();
+        return;
+      }
       const parsed = parseValue(raw, this.cfg);
-      if (parsed === null) return;
+      if (parsed === null) {
+        if (this.warnedBadValue !== raw) {
+          this.log.warn(`[${this.cfg.name}] unparseable value for "${this.cfg.key}": ${JSON.stringify(raw)}`);
+          this.warnedBadValue = raw;
+        }
+        markUnresponsive();
+        return;
+      }
+      this.warnedBadValue = undefined;
+      this.keyAvailable = true;
       this.currentValue = parsed;
       if (CharClass && this.service) {
         this.service.updateCharacteristic(CharClass as never, t.toHK(parsed));
@@ -239,16 +269,12 @@ export class PhidgetDictionaryAccessory {
     });
 
     this.subscription.onAttachChange((attached) => {
-      if (!CharClass || !this.service) return;
-      if (!attached && !isWritable) {
-        this.service.getCharacteristic(CharClass as never).updateValue(
-          new this.platform.api.hap.HapStatusError(
-            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
-          ),
-        );
-      } else if (attached) {
-        this.service.updateCharacteristic(CharClass as never, t.toHK(this.currentValue));
+      if (!attached) {
+        this.keyAvailable = false;
+        markUnresponsive();
       }
+      // On reattach the rescan will deliver either a value (clearing
+      // unresponsive) or null (keeping it).
     });
   }
 }
