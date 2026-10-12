@@ -12,6 +12,27 @@
         "default": "Phidget22",
         "required": true
       },
+      "log": {
+        "title": "Phidget Library Logging",
+        "type": "object",
+        "properties": {
+          "level": {
+            "title": "Log Level",
+            "type": "string",
+            "oneOf": [
+              { "title": "None (disabled)", "enum": ["none"] },
+              { "title": "Critical", "enum": ["critical"] },
+              { "title": "Error", "enum": ["error"] },
+              { "title": "Warning", "enum": ["warning"] },
+              { "title": "Info", "enum": ["info"] },
+              { "title": "Debug", "enum": ["debug"] },
+              { "title": "Verbose", "enum": ["verbose"] }
+            ],
+            "default": "warning",
+            "description": "phidget22 library messages are routed to Homebridge's logger at the matching level."
+          }
+        }
+      },
       "connections": {
         "title": "Phidget Connections",
         "type": "array",
@@ -99,7 +120,7 @@
               "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && ['VoltageInput','VoltageRatioInput'].includes(model.accessories[arrayIndices[0]].channelClass);" }
             },
             "dataInterval": { "title": "Data Interval (ms)", "type": "integer" },
-            "openTimeout": { "title": "Open Timeout (ms)", "type": "integer", "default": 5000 },
+            "deviceLabel": { "title": "Device Label", "type": "string", "description": "Match devices whose stored label equals this (alternative to serial number).", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'channel';" } },
             "invert": { "title": "Invert Digital Input", "type": "boolean", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].channelClass === 'DigitalInput';" } },
 
             "dictionaryLabel": { "title": "Dictionary Label", "type": "string", "default": "sensors", "condition": { "functionBody": "return model.accessories && model.accessories[arrayIndices[0]] && model.accessories[arrayIndices[0]].type === 'dictionary';" } },

@@ -4,6 +4,7 @@ import type {
   Logger,
   CharacteristicValue,
 } from 'homebridge';
+import type * as phidget22 from 'phidget22';
 
 import type { Phidget22Platform } from '../platform';
 import type { ChannelAccessoryConfig } from '../platform';
@@ -20,6 +21,7 @@ export class PhidgetChannelAccessory {
   private handle?: ChannelHandle;
   private readonly log: Logger;
   private currentValue: number = 0;
+  private attached = false;
 
   constructor(
     private readonly platform: Phidget22Platform,
@@ -38,7 +40,7 @@ export class PhidgetChannelAccessory {
       );
 
     this.installService();
-    void this.openChannel();
+    this.openChannel();
   }
 
   private installService(): void {
@@ -62,79 +64,117 @@ export class PhidgetChannelAccessory {
     }
 
     const char = this.service.getCharacteristic(CharClass as never);
-    char.onGet(() => t.toHK(this.currentValue));
+    const isWritable = !!t.fromHK;
+    char.onGet(() => {
+      // For sensor services, surface "No Response" in HomeKit while detached
+      // rather than returning a stale value. For writable services (switches,
+      // lights, outlets, fans) keep the last-known state — a greyed tile is
+      // less useful than the last commanded state.
+      if (!this.attached && !isWritable) {
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+        );
+      }
+      return t.toHK(this.currentValue);
+    });
 
-    if (t.fromHK) {
+    if (isWritable) {
       char.onSet(async (value: CharacteristicValue) => {
+        if (!this.attached) {
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          );
+        }
         const native = t.fromHK!(value as number | boolean);
         this.currentValue = native;
         try {
           await this.handle?.write?.(native);
         } catch (err) {
           this.log.warn(`[${this.cfg.name}] write failed: ${(err as Error).message}`);
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          );
         }
       });
     }
   }
 
-  private async openChannel(): Promise<void> {
-    try {
-      const connection = this.platform.connections.get(this.cfg.connection ?? 'Local');
-      const isRemote = (connection?.kind ?? 'local') === 'network';
-      const isLocal = (connection?.kind ?? 'local') === 'local';
+  private openChannel(): void {
+    const connection = this.platform.connections.get(this.cfg.connection ?? 'Local');
+    const isRemote = (connection?.kind ?? 'local') === 'network';
+    const isLocal = (connection?.kind ?? 'local') === 'local';
 
-      this.handle = buildChannel(this.cfg.channelClass, {
-        address: {
-          serialNumber: this.cfg.serialNumber,
-          hubPort: this.cfg.hubPort,
-          channel: this.cfg.channel,
-          isHubPortDevice: this.cfg.isHubPortDevice,
-          deviceLabel: this.cfg.deviceLabel,
-          isRemote,
-          isLocal,
-        },
-        sensorType: this.cfg.sensorType,
-        dataInterval: this.cfg.dataInterval,
-        invert: this.cfg.invert,
-      });
+    this.handle = buildChannel(this.cfg.channelClass, {
+      address: {
+        serialNumber: this.cfg.serialNumber,
+        hubPort: this.cfg.hubPort,
+        channel: this.cfg.channel,
+        isHubPortDevice: this.cfg.isHubPortDevice,
+        deviceLabel: this.cfg.deviceLabel,
+        isRemote,
+        isLocal,
+      },
+      sensorType: this.cfg.sensorType,
+      dataInterval: this.cfg.dataInterval,
+      invert: this.cfg.invert,
+    });
 
-      const svcName = this.cfg.service as SupportedService;
-      const t = serviceTransform(svcName);
-      const CharClass =
-        (this.platform.Characteristic as unknown as Record<string, { UUID: string }>)[t.characteristic];
+    const svcName = this.cfg.service as SupportedService;
+    const t = serviceTransform(svcName);
+    const CharClass =
+      (this.platform.Characteristic as unknown as Record<string, { UUID: string }>)[t.characteristic];
 
-      this.handle.onValue((v) => {
-        this.currentValue = v;
-        if (CharClass && this.service) {
-          this.service.updateCharacteristic(CharClass as never, t.toHK(v));
-        }
-      });
+    this.handle.onValue((v) => {
+      this.currentValue = v;
+      if (CharClass && this.service) {
+        this.service.updateCharacteristic(CharClass as never, t.toHK(v));
+      }
+    });
 
-      await this.handle.channel.open(this.cfg.openTimeout ?? 5000);
-      await applyPostAttach(this.cfg.channelClass, this.handle, {
-        address: {},
-        sensorType: this.cfg.sensorType,
-        dataInterval: this.cfg.dataInterval,
-      });
-
+    const ch = this.handle.channel as phidget22.Phidget;
+    ch.onAttach = async () => {
+      this.attached = true;
+      this.log.info(
+        `[${this.cfg.name}] attached (${this.cfg.channelClass}` +
+          (this.cfg.serialNumber ? `, sn ${this.cfg.serialNumber}` : '') +
+          `)`,
+      );
       try {
-        this.currentValue = this.handle.read();
+        await applyPostAttach(this.cfg.channelClass, this.handle!, {
+          address: {},
+          sensorType: this.cfg.sensorType,
+          dataInterval: this.cfg.dataInterval,
+        });
+      } catch (err) {
+        this.log.warn(`[${this.cfg.name}] post-attach setup failed: ${(err as Error).message}`);
+      }
+      try {
+        this.currentValue = this.handle!.read();
         if (CharClass && this.service) {
           this.service.updateCharacteristic(CharClass as never, t.toHK(this.currentValue));
         }
       } catch {
         // first read may not be available until the first change event
       }
+    };
+    ch.onDetach = () => {
+      this.attached = false;
+      this.log.info(`[${this.cfg.name}] detached — will reattach when the device reappears`);
+      // Push unresponsive state to HomeKit for sensor services, so the tile
+      // shows "No Response" without waiting for the next poll.
+      if (CharClass && this.service && !t.fromHK) {
+        this.service.getCharacteristic(CharClass as never).updateValue(
+          new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          ),
+        );
+      }
+    };
 
-      this.log.info(
-        `[${this.cfg.name}] attached (${this.cfg.channelClass}` +
-          (this.cfg.serialNumber ? `, sn ${this.cfg.serialNumber}` : '') +
-          `)`,
-      );
-    } catch (err) {
-      this.log.warn(
-        `[${this.cfg.name}] open failed: ${(err as Error).message}. Will stay unresponsive until the device appears.`,
-      );
-    }
+    // Fire-and-forget open; passing no timeout tells the Phidget library to
+    // match forever. onAttach / onDetach handle lifecycle transitions.
+    this.handle.channel.open().catch((err) => {
+      this.log.warn(`[${this.cfg.name}] open failed: ${(err as Error).message}`);
+    });
   }
 }

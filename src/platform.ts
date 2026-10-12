@@ -13,6 +13,7 @@ import { ConnectionManager, ConnectionTarget, ConnectionConfig } from './connect
 import { PhidgetChannelAccessory } from './accessories/channel';
 import { PhidgetDictionaryAccessory, DictionarySubscription } from './accessories/dictionary';
 import { SupportedChannelClass, SupportedService } from './mapping';
+import { routePhidgetLogs, PhidgetLogLevelName } from './phidgetLog';
 
 export interface ChannelAccessoryConfig {
   type: 'channel';
@@ -27,7 +28,6 @@ export interface ChannelAccessoryConfig {
   deviceLabel?: string;
   sensorType?: string;
   dataInterval?: number;
-  openTimeout?: number;
   invert?: boolean;
 }
 
@@ -50,6 +50,9 @@ export type AccessoryConfig = ChannelAccessoryConfig | DictionaryAccessoryConfig
 interface Phidget22PluginConfig extends PlatformConfig {
   connections?: ConnectionConfig[];
   accessories?: AccessoryConfig[];
+  log?: {
+    level?: PhidgetLogLevelName;
+  };
 }
 
 export class Phidget22Platform implements DynamicPlatformPlugin {
@@ -57,7 +60,7 @@ export class Phidget22Platform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic;
   public readonly connections: ConnectionManager;
   private readonly restored = new Map<string, PlatformAccessory>();
-  private readonly dictionaries = new Map<string, Promise<DictionarySubscription>>();
+  private readonly dictionaries = new Map<string, DictionarySubscription>();
 
   constructor(
     public readonly log: Logger,
@@ -67,6 +70,9 @@ export class Phidget22Platform implements DynamicPlatformPlugin {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
     this.connections = new ConnectionManager(log);
+
+    const cfg = this.config as Phidget22PluginConfig;
+    routePhidgetLogs(log, cfg.log?.level ?? 'warning');
 
     this.api.on('didFinishLaunching', () => {
       void this.start();
@@ -131,20 +137,14 @@ export class Phidget22Platform implements DynamicPlatformPlugin {
     }
   }
 
-  getDictionary(label: string, isRemote: boolean, isLocal: boolean): Promise<DictionarySubscription> {
+  getDictionary(label: string, isRemote: boolean, isLocal: boolean): DictionarySubscription {
     const cacheKey = `${label}|${isRemote ? 'R' : ''}${isLocal ? 'L' : ''}`;
     const existing = this.dictionaries.get(cacheKey);
     if (existing) return existing;
-    const promise = (async () => {
-      const sub = new DictionarySubscription(label, this.log, isRemote, isLocal);
-      await sub.open(5000);
-      return sub;
-    })().catch((err) => {
-      this.log.error(`[dictionary:${label}] open failed: ${(err as Error).message}`);
-      throw err;
-    });
-    this.dictionaries.set(cacheKey, promise);
-    return promise;
+    const sub = new DictionarySubscription(label, this.log, isRemote, isLocal);
+    sub.open();
+    this.dictionaries.set(cacheKey, sub);
+    return sub;
   }
 }
 
@@ -158,6 +158,7 @@ function accessoryKey(ac: AccessoryConfig): string {
     ac.connection ?? 'Local',
     ac.channelClass,
     ac.serialNumber ?? '*',
+    ac.deviceLabel ?? '*',
     ac.hubPort ?? '*',
     ac.channel ?? '*',
     ac.isHubPortDevice ? 'HP' : '',

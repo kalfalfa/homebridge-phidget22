@@ -12,6 +12,8 @@ export class DictionarySubscription {
   private dict: phidget22.Dictionary;
   private listeners = new Map<string, Array<(value: string | null) => void>>();
   private cache = new Map<string, string>();
+  private attached = false;
+  private attachListeners: Array<(attached: boolean) => void> = [];
 
   constructor(
     private readonly label: string,
@@ -27,11 +29,54 @@ export class DictionarySubscription {
     this.dict.onAdd = (key, value) => this.deliver(key, value);
     this.dict.onUpdate = (key, value) => this.deliver(key, value);
     this.dict.onRemove = (key) => this.deliver(key, null);
+    this.dict.onAttach = () => {
+      this.attached = true;
+      this.log.info(`[dictionary:${this.label}] attached`);
+      void this.rescan();
+      // Resolve any pending gets for already-subscribed keys that were
+      // registered before the dictionary attached.
+      for (const key of this.listeners.keys()) {
+        if (this.cache.has(key)) continue;
+        this.dict.get(key).then((v) => {
+          if (v !== null) this.deliver(key, v);
+        }).catch(() => {});
+      }
+      this.fireAttach(true);
+    };
+    this.dict.onDetach = () => {
+      this.attached = false;
+      this.log.info(`[dictionary:${this.label}] detached — will reattach when the server reappears`);
+      this.fireAttach(false);
+    };
   }
 
-  async open(timeout = 5000): Promise<void> {
-    await this.dict.open(timeout);
-    this.log.info(`[dictionary:${this.label}] attached`);
+  isAttached(): boolean {
+    return this.attached;
+  }
+
+  onAttachChange(cb: (attached: boolean) => void): () => void {
+    this.attachListeners.push(cb);
+    return () => {
+      const i = this.attachListeners.indexOf(cb);
+      if (i >= 0) this.attachListeners.splice(i, 1);
+    };
+  }
+
+  private fireAttach(attached: boolean): void {
+    for (const cb of this.attachListeners) {
+      try { cb(attached); } catch { /* ignore */ }
+    }
+  }
+
+  open(): void {
+    // Fire-and-forget — the Phidget library maintains the match forever and
+    // onAttach fires each time the dictionary becomes available.
+    this.dict.open().catch((err) => {
+      this.log.warn(`[dictionary:${this.label}] open failed: ${(err as Error).message}`);
+    });
+  }
+
+  private async rescan(): Promise<void> {
     try {
       let cursor = '';
       for (;;) {
@@ -44,7 +89,7 @@ export class DictionarySubscription {
         cursor = batch[batch.length - 1];
       }
     } catch (err) {
-      this.log.warn(`[dictionary:${this.label}] initial scan failed: ${(err as Error).message}`);
+      this.log.warn(`[dictionary:${this.label}] scan failed: ${(err as Error).message}`);
     }
   }
 
@@ -55,7 +100,7 @@ export class DictionarySubscription {
     const cached = this.cache.get(key);
     if (cached !== undefined) {
       cb(cached);
-    } else {
+    } else if (this.attached) {
       this.dict.get(key).then((v) => {
         if (v !== null) {
           this.cache.set(key, v);
@@ -114,7 +159,7 @@ export class PhidgetDictionaryAccessory {
       .setCharacteristic(this.platform.Characteristic.SerialNumber, cfg.key);
 
     this.installService();
-    void this.subscribe();
+    this.subscribe();
   }
 
   private installService(): void {
@@ -138,32 +183,51 @@ export class PhidgetDictionaryAccessory {
     }
 
     const char = this.service.getCharacteristic(CharClass as never);
-    char.onGet(() => t.toHK(this.currentValue));
+    const isWritable = !!(t.fromHK && this.cfg.writable);
+    char.onGet(() => {
+      // Sensor-style dictionary accessory with no attached server → unresponsive.
+      // Writable accessories keep their last-known state.
+      if (!this.subscription?.isAttached() && !isWritable) {
+        throw new this.platform.api.hap.HapStatusError(
+          this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+        );
+      }
+      return t.toHK(this.currentValue);
+    });
 
-    if (t.fromHK && this.cfg.writable) {
+    if (isWritable) {
       char.onSet(async (value) => {
+        if (!this.subscription?.isAttached()) {
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          );
+        }
         const native = t.fromHK!(value as number | boolean);
         this.currentValue = native;
         try {
-          await this.subscription?.set(this.cfg.key, this.cfg.writeFormat === 'bool' ? (native ? '1' : '0') : String(native));
+          await this.subscription.set(this.cfg.key, this.cfg.writeFormat === 'bool' ? (native ? '1' : '0') : String(native));
         } catch (err) {
           this.log.warn(`[${this.cfg.name}] dictionary write failed: ${(err as Error).message}`);
+          throw new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          );
         }
       });
     }
   }
 
-  private async subscribe(): Promise<void> {
+  private subscribe(): void {
     const label = this.cfg.dictionaryLabel ?? 'sensors';
     const connection = this.platform.connections.get(this.cfg.connection ?? 'Local');
     const isRemote = (connection?.kind ?? 'local') === 'network';
     const isLocal = (connection?.kind ?? 'local') === 'local';
-    this.subscription = await this.platform.getDictionary(label, isRemote, isLocal);
+    this.subscription = this.platform.getDictionary(label, isRemote, isLocal);
 
     const svcName = this.cfg.service as SupportedService;
     const t = serviceTransform(svcName);
     const CharClass =
       (this.platform.Characteristic as unknown as Record<string, { UUID: string }>)[t.characteristic];
+    const isWritable = !!(t.fromHK && this.cfg.writable);
 
     this.subscription.subscribe(this.cfg.key, (raw) => {
       const parsed = parseValue(raw, this.cfg);
@@ -171,6 +235,19 @@ export class PhidgetDictionaryAccessory {
       this.currentValue = parsed;
       if (CharClass && this.service) {
         this.service.updateCharacteristic(CharClass as never, t.toHK(parsed));
+      }
+    });
+
+    this.subscription.onAttachChange((attached) => {
+      if (!CharClass || !this.service) return;
+      if (!attached && !isWritable) {
+        this.service.getCharacteristic(CharClass as never).updateValue(
+          new this.platform.api.hap.HapStatusError(
+            this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          ),
+        );
+      } else if (attached) {
+        this.service.updateCharacteristic(CharClass as never, t.toHK(this.currentValue));
       }
     });
   }

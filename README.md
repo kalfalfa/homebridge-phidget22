@@ -71,8 +71,11 @@ If you omit `connections`, a single `Local` USB connection is assumed.
 - `sensorType` — for `VoltageInput` / `VoltageRatioInput`, the enum name from
   `phidget22.VoltageSensorType` / `phidget22.VoltageRatioSensorType`
   (e.g. `PN_1142`, `PN_1125_TEMPERATURE`). Omit for raw voltage / ratio.
-- Addressing — `serialNumber`, `hubPort`, `channel`, `isHubPortDevice`,
-  `deviceLabel` are all optional; use the ones you need to disambiguate.
+- Addressing — `serialNumber`, `deviceLabel`, `hubPort`, `channel`,
+  `isHubPortDevice` are all optional; use the ones you need to disambiguate.
+  `deviceLabel` matches the string written into the device's flash with
+  Phidget Control Panel ("writeDeviceLabel") and is an alternative to the
+  serial number.
 - `invert` on `DigitalInput` flips the characteristic (useful for pull-ups).
 
 ### Dictionary accessories
@@ -146,12 +149,27 @@ so the value falls into the lux range.)
 
 Need another? Open an issue or add a case in `src/mapping.ts`.
 
+### Logging
+
+The phidget22 library's own log output is routed through Homebridge's logger.
+Level is set in config:
+
+```json
+"log": { "level": "warning" }
+```
+
+Valid levels: `none`, `critical`, `error`, `warning` (default), `info`,
+`debug`, `verbose`.
+
 ## Troubleshooting
 
-- `open failed: ...` — the channel's addressing didn't match a device. Check
-  serial number, hub port, channel, and `isHubPortDevice`. The plugin keeps
-  trying after an open failure in the sense that the Phidget library's own
-  attach watch will fire if the device later appears.
+- Channels open fire-and-forget — no startup timeout, no "open failed" at
+  attach time. If a device isn't present the plugin stays registered and the
+  Phidget library attaches whenever the device appears (or reappears after
+  an unplug). Watch for `[name] attached` / `[name] detached` log lines.
+- If the plugin never logs `attached` for a given accessory, check the
+  addressing: `serialNumber`, `deviceLabel`, `hubPort`, `channel`, and
+  `isHubPortDevice` must identify exactly one channel.
 - Network connections retry automatically if the server comes up later.
 - Dictionary writes are only attempted when `writable: true`.
 
