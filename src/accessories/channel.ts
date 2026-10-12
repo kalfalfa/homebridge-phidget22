@@ -100,7 +100,7 @@ export class PhidgetChannelAccessory {
   }
 
   private openChannel(): void {
-    const connection = this.platform.connections.get(this.cfg.connection ?? 'Local');
+    const connection = this.platform.connections.resolve(this.cfg.connection, false, this.cfg.name);
     const isRemote = (connection?.kind ?? 'local') === 'network';
     const isLocal = (connection?.kind ?? 'local') === 'local';
 

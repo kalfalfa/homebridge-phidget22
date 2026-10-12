@@ -66,7 +66,7 @@
               "default": "channel",
               "required": true
             },
-            "connection": { "title": "Connection", "type": "string", "default": "Local" },
+            "connection": { "title": "Connection", "type": "string", "description": "Name of a connection defined in the Connections tab. Leave blank to use the first configured connection." },
             "service": {
               "title": "HomeKit Service",
               "type": "string",
@@ -133,5 +133,66 @@
         }
       }
     }
-  }
+  },
+  "layout": [
+    {
+      "type": "tabs",
+      "tabs": [
+        {
+          "title": "General",
+          "items": [
+            "name",
+            "log.level"
+          ]
+        },
+        {
+          "title": "Connections",
+          "items": [
+            {
+              "key": "connections",
+              "sortOptions": { "cancel": "select, input, textarea, .ng-select, .form-control, button, label" },
+              "items": [
+                "connections[].name",
+                "connections[].type",
+                "connections[].hostname",
+                "connections[].port",
+                "connections[].password"
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Accessories",
+          "items": [
+            {
+              "key": "accessories",
+              "sortOptions": { "cancel": "select, input, textarea, .ng-select, .form-control, button, label" },
+              "items": [
+                "accessories[].name",
+                "accessories[].type",
+                "accessories[].connection",
+                "accessories[].service",
+                "accessories[].channelClass",
+                "accessories[].serialNumber",
+                "accessories[].deviceLabel",
+                "accessories[].hubPort",
+                "accessories[].channel",
+                "accessories[].isHubPortDevice",
+                "accessories[].sensorType",
+                "accessories[].dataInterval",
+                "accessories[].invert",
+                "accessories[].dictionaryLabel",
+                "accessories[].key",
+                "accessories[].parse",
+                "accessories[].scale",
+                "accessories[].offset",
+                "accessories[].writable",
+                "accessories[].writeFormat"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

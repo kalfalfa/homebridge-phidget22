@@ -221,7 +221,7 @@ export class PhidgetDictionaryAccessory {
 
   private subscribe(): void {
     const label = this.cfg.dictionaryLabel ?? 'sensors';
-    const connection = this.platform.connections.get(this.cfg.connection ?? 'Local');
+    const connection = this.platform.connections.resolve(this.cfg.connection, true, this.cfg.name);
     const isRemote = (connection?.kind ?? 'local') === 'network';
     const isLocal = (connection?.kind ?? 'local') === 'local';
     this.subscription = this.platform.getDictionary(label, isRemote, isLocal);

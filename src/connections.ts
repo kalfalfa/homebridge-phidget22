@@ -129,6 +129,29 @@ export class ConnectionManager {
     return this.targets.get(name);
   }
 
+  /**
+   * Resolve a config-provided connection name. If the name matches a configured
+   * connection, return it. Otherwise fall back to the first configured
+   * connection (or first `network`-type connection, if requireNetwork is set)
+   * and log a warning so misconfiguration doesn't fail silently.
+   */
+  resolve(name: string | undefined, requireNetwork: boolean, accessoryName: string): ConnectionTarget | undefined {
+    if (name) {
+      const hit = this.targets.get(name);
+      if (hit && (!requireNetwork || hit.kind === 'network')) return hit;
+      if (hit && requireNetwork) {
+        this.log.warn(`[${accessoryName}] connection "${name}" is USB — dictionary accessories require a network connection; falling back`);
+      } else {
+        this.log.warn(`[${accessoryName}] connection "${name}" is not configured; falling back`);
+      }
+    }
+    for (const t of this.targets.values()) {
+      if (!requireNetwork || t.kind === 'network') return t;
+    }
+    this.log.error(`[${accessoryName}] no ${requireNetwork ? 'network ' : ''}connection configured`);
+    return undefined;
+  }
+
   connectAll(): void {
     for (const t of this.targets.values()) t.connect();
   }
