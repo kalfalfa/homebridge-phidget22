@@ -28,8 +28,12 @@ npm run build
 sudo npm install -g .     # or `sudo npm link`
 ```
 
-Phidget22 USB access requires `libusb` and either the system Phidget drivers
-or the optional `usb` npm package.
+The `phidget22` npm package is self-contained — it does **not** depend on
+Phidget's C library or Phidget Control Panel being installed on the system.
+For local USB connections it uses the optional `usb` npm package (a native
+libusb binding), which npm pulls in automatically when build tools are
+available. For `network`-type connections to a Phidget Network Server no
+USB stack is needed at all.
 
 ## Configuration
 
