@@ -20,7 +20,6 @@
             "title": "Log Level",
             "type": "string",
             "oneOf": [
-              { "title": "None (disabled)", "enum": ["none"] },
               { "title": "Critical", "enum": ["critical"] },
               { "title": "Error", "enum": ["error"] },
               { "title": "Warning", "enum": ["warning"] },

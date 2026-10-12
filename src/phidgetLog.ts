@@ -10,7 +10,6 @@ import * as phidget22 from 'phidget22';
  */
 
 export type PhidgetLogLevelName =
-  | 'none'
   | 'critical'
   | 'error'
   | 'warning'
@@ -18,7 +17,7 @@ export type PhidgetLogLevelName =
   | 'debug'
   | 'verbose';
 
-const LEVEL_RE = /\s<(CRIT|ERROR|Warn|Info|Debug|Verb)>\s*:/;
+const LEVEL_RE = /<(CRIT|ERROR|Warn|Info|Debug|Verb)>\s*:/;
 
 interface Installed {
   logger: Logger;
@@ -77,24 +76,25 @@ export function routePhidgetLogs(logger: Logger, level: PhidgetLogLevelName): vo
 }
 
 function formatMessage(first: string, rest: unknown[]): string {
-  // Strip the `phidget22 <LEVEL> : ` prefix and any trailing ` +Nms` diff.
+  // Strip the `[timestamp ]phidget22 <LEVEL> : ` prefix, the trailing ` -`
+  // the library appends when it passes an object as a second arg, and any
+  // ` +Nms` diff.
   const cleaned = first
     .replace(/^.*?phidget22\s*<[A-Za-z]+>\s*:\s*/, '')
-    .replace(/\s+\+\d+ms\s*$/, '');
+    .replace(/\s+\+\d+ms\s*$/, '')
+    .replace(/\s+-\s*$/, '');
   if (rest.length === 0) return cleaned;
-  const tail = rest.map((v) => (typeof v === 'string' ? v : safeStringify(v))).join(' ');
+  const tail = rest.map(formatValue).join(' ');
   return cleaned + ' ' + tail;
 }
 
-function safeStringify(v: unknown): string {
+function formatValue(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (v instanceof Error) return v.stack ?? v.message;
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
 function applyLevel(level: PhidgetLogLevelName): void {
-  if (level === 'none') {
-    phidget22.Log.disable();
-    return;
-  }
   const mapped = {
     critical: phidget22.LogLevel.CRITICAL,
     error: phidget22.LogLevel.ERROR,

@@ -93,7 +93,7 @@ export class Phidget22Platform implements DynamicPlatformPlugin {
     for (const c of connections) {
       this.connections.add(c);
     }
-    await this.connections.connectAll();
+    this.connections.connectAll();
 
     const accessories = cfg.accessories ?? [];
     const seenUUIDs = new Set<string>();

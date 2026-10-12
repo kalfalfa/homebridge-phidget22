@@ -1,7 +1,7 @@
 {
   "name": "homebridge-phidget22",
   "displayName": "Phidget22",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Homebridge dynamic platform plugin that exposes Phidget22 channels and dictionary keys as HomeKit accessories. Supports local USB and Phidget Network Server connections.",
   "author": "Patrick McNeil <kalfalfa@gmail.com>",
   "license": "ISC",

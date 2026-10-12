@@ -77,20 +77,24 @@ export class ConnectionTarget {
     }
   }
 
-  async connect(): Promise<void> {
+  connect(): void {
     if (!this.connection) {
       return;
     }
-    try {
-      if (this.connection instanceof phidget22.NetworkConnection) {
-        await this.connection.connect(true);
-      } else if (this.connection instanceof phidget22.USBConnection) {
-        await this.connection.connect();
+    if (this.connection instanceof phidget22.NetworkConnection) {
+      // retryOnFail: true — library maintains the retry forever; we don't
+      // await the promise so startup isn't blocked by an unreachable server.
+      // onConnect / onDisconnect callbacks drive our `connected` flag.
+      this.connection.connect(true).catch((err) => {
+        this.log.error(`[${this.name}] connect failed: ${(err as Error).message}`);
+      });
+    } else if (this.connection instanceof phidget22.USBConnection) {
+      this.connection.connect().then(() => {
         this.connected = true;
         this.log.info(`[${this.name}] USB connection ready`);
-      }
-    } catch (err) {
-      this.log.error(`[${this.name}] connect failed: ${(err as Error).message}`);
+      }).catch((err) => {
+        this.log.error(`[${this.name}] connect failed: ${(err as Error).message}`);
+      });
     }
   }
 
@@ -125,8 +129,8 @@ export class ConnectionManager {
     return this.targets.get(name);
   }
 
-  async connectAll(): Promise<void> {
-    await Promise.all([...this.targets.values()].map(t => t.connect()));
+  connectAll(): void {
+    for (const t of this.targets.values()) t.connect();
   }
 
   closeAll(): void {

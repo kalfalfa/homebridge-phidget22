@@ -158,8 +158,8 @@ Level is set in config:
 "log": { "level": "warning" }
 ```
 
-Valid levels: `none`, `critical`, `error`, `warning` (default), `info`,
-`debug`, `verbose`.
+Valid levels: `critical`, `error`, `warning` (default), `info`, `debug`,
+`verbose`.
 
 ## Troubleshooting
 
