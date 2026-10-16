@@ -5,8 +5,20 @@
   "description": "Homebridge dynamic platform plugin that exposes Phidget22 channels and dictionary keys as HomeKit accessories. Supports local USB and Phidget Network Server connections.",
   "author": "Patrick McNeil <kalfalfa@gmail.com>",
   "license": "ISC",
-  "private": true,
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalfalfa/homebridge-phidget22.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kalfalfa/homebridge-phidget22/issues"
+  },
+  "homepage": "https://github.com/kalfalfa/homebridge-phidget22#readme",
+  "files": [
+    "dist",
+    "config.schema.json",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
